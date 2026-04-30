@@ -1,0 +1,456 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  HR_ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+  RESIGNED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum RecruitmentStatus {
+  OPEN
+  CLOSED
+  ON_HOLD
+}
+
+enum ApplicantStatus {
+  APPLIED
+  SHORTLISTED
+  INTERVIEWED
+  SELECTED
+  REJECTED
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum TrainingStatus {
+  PLANNED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String   @unique
+  password  String
+  role               UserRole @default(EMPLOYEE)
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  Employee?
+  notices   Notice[]
+  auditLogs AuditLog[]
+}
+
+model Employee {
+  id               String         @id @default(auto()) @map("_id") @db.ObjectId
+  employeeId       String         @unique
+  firstName        String
+  lastName         String
+  fatherName       String?
+  motherName       String?
+  dateOfBirth      DateTime?
+  gender           String?
+  maritalStatus    String?
+  bloodGroup       String?
+  nationalId       String?        @unique
+  phone            String?
+  emergencyContact String?
+  presentAddress   String?
+  permanentAddress String?
+  joinDate         DateTime
+  confirmationDate DateTime?
+  status           EmployeeStatus @default(ACTIVE)
+  employmentType   EmploymentType @default(FULL_TIME)
+  role             String?
+  photoUrl         String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  userId           String         @unique @db.ObjectId
+  user             User           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  departmentId     String         @db.ObjectId
+  department       Department     @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  designationId    String         @db.ObjectId
+  designation      Designation    @relation(fields: [designationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  supervisorId     String?        @db.ObjectId
+  supervisor       Employee?      @relation("SupervisorToSubordinate", fields: [supervisorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subordinates     Employee[]     @relation("SupervisorToSubordinate")
+
+  shiftId          String?        @db.ObjectId
+  shift            Shift?         @relation(fields: [shiftId], references: [id])
+
+  attendances      Attendance[]
+  leaves           Leave[]
+  leaveBalances    LeaveBalance[]
+  payrolls         Payroll[]
+  salaryStructure  SalaryStructure?
+  trainings        TrainingParticipant[]
+  loans            Loan[]
+  documents        Document[]
+  rosters          Roster[]
+  managedDepartments Department[] @relation("DeptManager")
+
+  @@index([firstName, lastName])
+}
+
+model Department {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  name         String        @unique
+  code         String        @unique
+  description  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  managerId    String?       @db.ObjectId
+  manager      Employee?     @relation("DeptManager", fields: [managerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  parentDepartmentId String?      @db.ObjectId
+  parentDepartment   Department?  @relation("DeptToSubDept", fields: [parentDepartmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subDepartments     Department[] @relation("DeptToSubDept")
+
+  employees    Employee[]
+  designations Designation[]
+  attendances  Attendance[]
+  recruitments Recruitment[]
+  trainings    Training[]
+}
+
+model Designation {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  grade        String?
+  description  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  departmentId String     @db.ObjectId
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  employees    Employee[]
+}
+
+model Attendance {
+  id            String           @id @default(auto()) @map("_id") @db.ObjectId
+  date          DateTime
+  checkIn       DateTime?
+  checkOut      DateTime?
+  status        AttendanceStatus
+  workHours     Float?
+  overtimeHours Float?
+  location      String?          // JSON string for lat/lng
+  remarks       String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  employeeId    String           @db.ObjectId
+  employee      Employee         @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  departmentId  String?          @db.ObjectId
+  department    Department?      @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([date])
+  @@index([employeeId, date])
+}
+
+model Leave {
+  id           String      @id @default(auto()) @map("_id") @db.ObjectId
+  fromDate     DateTime
+  toDate       DateTime
+  totalDays    Int
+  reason       String
+  status       LeaveStatus @default(PENDING)
+  appliedAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  employeeId   String      @db.ObjectId
+  employee     Employee    @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  leaveTypeId  String      @db.ObjectId
+  leaveType    LeaveType   @relation(fields: [leaveTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  approvedById String?     @db.ObjectId
+}
+
+model LeaveType {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  name         String         @unique // Casual, Sick, Annual, etc.
+  totalDays    Int
+  carryForward Boolean        @default(false)
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  leaves       Leave[]
+  balances     LeaveBalance[]
+}
+
+model LeaveBalance {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  year        Int
+  allocated   Float     @default(0)
+  used        Float     @default(0)
+  remaining   Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employeeId  String    @db.ObjectId
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  leaveTypeId String    @db.ObjectId
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([employeeId, leaveTypeId, year])
+}
+
+model Payroll {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  month            Int
+  year             Int
+  basicSalary      Float
+  allowances       Float    @default(0)
+  deductions       Float    @default(0)
+  netSalary        Float
+  status           String   @default("UNPAID")
+  paidAt           DateTime?
+  paymentReference String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  employeeId       String   @db.ObjectId
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([month, year])
+}
+
+model SalaryStructure {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  basicSalary        Float
+  houseRentPercent   Float    @default(0)
+  medicalPercent     Float    @default(0)
+  transportAllowance Float    @default(0)
+  effectiveFrom      DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  employeeId         String   @unique @db.ObjectId
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Recruitment {
+  id           String            @id @default(auto()) @map("_id") @db.ObjectId
+  jobTitle     String
+  vacancies    Int
+  description  String
+  requirements String
+  jobType      String
+  status       RecruitmentStatus @default(OPEN)
+  deadline     DateTime
+  postedAt     DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  departmentId String            @db.ObjectId
+  department   Department        @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  applicants   Applicant[]
+}
+
+model Applicant {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  email         String
+  phone         String
+  resumeUrl     String
+  coverLetter   String?
+  status        ApplicantStatus @default(APPLIED)
+  appliedAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  recruitmentId String          @db.ObjectId
+  recruitment   Recruitment     @relation(fields: [recruitmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Notice {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  title         String
+  description   String
+  priority      Priority @default(MEDIUM)
+  isActive      Boolean  @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  publishedById String   @db.ObjectId
+  publishedBy   User     @relation(fields: [publishedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Training {
+  id           String         @id @default(auto()) @map("_id") @db.ObjectId
+  title        String
+  description  String
+  startDate    DateTime
+  endDate      DateTime
+  status       TrainingStatus @default(PLANNED)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  trainerId    String?        @db.ObjectId // Employee ID of trainer
+  departmentId String         @db.ObjectId
+  department   Department     @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  participants TrainingParticipant[]
+}
+
+model TrainingParticipant {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  status     String   @default("ENROLLED")
+  feedback   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  trainingId String   @db.ObjectId
+  training   Training @relation(fields: [trainingId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  employeeId String   @db.ObjectId
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([trainingId, employeeId])
+}
+
+model Loan {
+  id               String      @id @default(auto()) @map("_id") @db.ObjectId
+  amount           Float
+  installments     Int
+  monthlyDeduction Float
+  reason           String
+  status           LoanStatus  @default(PENDING)
+  disbursedAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  employeeId       String      @db.ObjectId
+  employee         Employee    @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  approvedById     String?     @db.ObjectId
+  payments         LoanPayment[]
+}
+
+model LoanPayment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  amount    Float
+  month     Int
+  year      Int
+  paidAt    DateTime @default(now())
+
+  loanId    String   @db.ObjectId
+  loan      Loan     @relation(fields: [loanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Document {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  title      String
+  type       String
+  fileUrl    String
+  uploadedAt DateTime @default(now())
+
+  employeeId String   @db.ObjectId
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Shift {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  name         String     @unique
+  startTime    String
+  endTime      String
+  graceMinutes Int        @default(15)
+  isDefault    Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  employees    Employee[]
+  rosters      Roster[]
+}
+
+model Roster {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  date       DateTime
+
+  employeeId String   @db.ObjectId
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  shiftId    String   @db.ObjectId
+  shift      Shift    @relation(fields: [shiftId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([employeeId, date])
+}
+
+model AuditLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  action    String
+  entity    String
+  entityId  String
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
